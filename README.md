@@ -99,8 +99,8 @@ Both parts adapt to the person. The **timing** comes from their logging history,
 | JITAI component | In this prototype |
 |---|---|
 | Decision point | A dose still not logged 30 minutes after the person's usual window for it (1 hour after the dose until there are 7 logs; never more than 2 hours) |
-| Tailoring variables | Usual logging window for each dose, time slot (morning before 11:00, midday, evening from 17:00), current streak, whether yesterday had a miss, nudges already sent today |
-| Intervention options | No nudge · Reminder · Streak · Progress ("you're at 92% this month") · Fresh start (only after a day with a miss) |
+| Tailoring variables | Usual logging window for each dose, time slot (morning before 11:00, midday, evening from 17:00), current streak, nudges already sent today |
+| Intervention options | No nudge · Reminder · Streak ("Start a new streak today" / "You're on a 2-day streak" / "Your 12-day streak is still going") · Progress ("you're at 92% this month") |
 | Decision rule | Thompson sampling: each user has a Beta belief for each time slot × option pair |
 | Proximal outcome | The dose gets logged after the decision |
 | Distal outcome | Adherence over weeks, and retention |
@@ -139,20 +139,20 @@ Each run is 5 doses a day for 60 days, averaged over 50 simulated users per pers
 
 | Persona (hidden preference) | Adaptive engine | Always remind | No nudges |
 |---|---|---|---|
-| The Streaker (streak messages) | **78.3%** · 101 nudges | 71.1% · 104 | 63.7% |
-| Data lover (monthly progress) | **76.0%** · 105 | 69.9% · 108 | 61.0% |
-| Night Owl (evening reminders, ignores mornings) | 64.0% · 105 | **65.0%** · 111 | 58.8% |
-| Self-starter (logs late but reliably on their own) | 95.4% · **60** | 95.4% · 107 | 95.9% |
+| The Streaker (streak messages) | **79.2%** · 101 nudges | 71.1% · 104 | 63.7% |
+| Data lover (monthly progress) | **77.2%** · 104 | 69.9% · 108 | 61.0% |
+| Night Owl (evening reminders, ignores mornings) | 64.4% · 104 | **65.0%** · 111 | 58.8% |
+| Self-starter (logs late but reliably on their own) | 95.5% · **59** | 95.4% · 107 | 95.9% |
 
 *Adherence = doses taken ÷ doses scheduled. Nudge counts are per user over 60 days, which is 300 doses.*
 
 What this shows:
 
-- **When one message works much better than a plain reminder, the engine finds it** and gains 6–7 points.
-  - For one simulated Streaker, streak messages rose from 9% of decisions in days 1–10 to 41% in days 51–60.
-  - For one simulated Data lover, progress messages rose from 20% to 55%.
-- **The Self-starter gets the same adherence with 44% fewer nudges.** By days 51–60 the engine chose *No nudge* in 77% of its decisions.
-- **When a plain reminder is already the best option, the engine costs about a point.** That is the case for the Night Owl in the evening, so "always remind" is close to the best possible policy, and the engine pays about a point for exploring. The Night Owl's real problem is mornings, where no message works. That needs the reminder moved to a better time, not a better message, which is what the learned timing and the "move reminder" suggestion are for.
+- **When one message works much better than a plain reminder, the engine finds it** and gains 7–8 points.
+  - For one simulated Streaker, streak messages rose from 30% of decisions in days 1–10 to 62% in days 51–60.
+  - For one simulated Data lover, progress messages rose from 19% to 69%.
+- **The Self-starter gets the same adherence with 45% fewer nudges.** By days 51–60 the engine chose *No nudge* in 81% of its decisions.
+- **When a plain reminder is already the best option, the engine costs under a point.** That is the case for the Night Owl in the evening, so "always remind" is close to the best possible policy, and the engine pays a little for exploring. The Night Owl's real problem is mornings, where no message works. That needs the reminder moved to a better time, not a better message, which is what the learned timing and the "move reminder" suggestion are for.
 
 **The simulation caught a design flaw.**
 
@@ -166,7 +166,9 @@ Streak messages are now always available, with copy that fits the streak length:
 - "You're on a 2-day streak"
 - "Your 12-day streak is still going"
 
-The simulator also now uses the app's grace-day rule. Together, these changes took the Streaker from roughly level with "always remind" to 7 points ahead.
+The simulator also now uses the app's grace-day rule. Together, these changes took the Streaker from roughly level with "always remind" to 8 points ahead.
+
+The 0-day message also covers the moment right after a slip. That made a separate "Fresh start" option, sent the day after a miss, redundant, so I removed it.
 
 **Limits of the simulation:**
 
@@ -202,7 +204,7 @@ The production version on Acorn's stack would look like this.
 
 **Data (Firestore)**
 
-- `users/{uid}/meds`, `doseEvents`, `engine/state` (30 numbers: 3 slots × 5 options × α and β) and `decisions`.
+- `users/{uid}/meds`, `doseEvents`, `engine/state` (24 numbers: 3 slots × 4 options × α and β) and `decisions`.
 - `circles/{patientUid}/members/{memberUid}`, holding the relationship, status and notification preference.
 - `invites/{code}`: single-use and expiring. Invites are claimed through a callable function and never written directly by clients.
 

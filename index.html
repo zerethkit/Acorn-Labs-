@@ -707,7 +707,6 @@ const ARMS=[
   {key:'reminder',label:'Reminder',color:'var(--cool)',msg:m=>`Time for ${m.name} ${m.strength}. ${m.note}.`},
   {key:'streak',label:'Streak',color:'var(--accent)',msg:(m,c)=>c.streak>=3?`Your ${c.streak}-day streak is still going. Log ${m.name} to keep it.`:c.streak>0?`You're on a ${c.streak}-day streak. Log ${m.name} to keep it going.`:`Start a new streak today: log ${m.name}.`},
   {key:'progress',label:'Progress',color:'var(--good)',msg:m=>`You're at ${Math.round(pct(30)*100)}% this month. ${m.name} is due.`},
-  {key:'recovery',label:'Fresh start',color:'var(--violet)',msg:m=>`Yesterday had a miss. Today's a fresh start: ${m.name} is due.`,eligible:c=>c.missedYesterday}
 ];
 const FATIGUE_CAP=2,UNNEEDED_NUDGE_REWARD=0.8;
 // Population prior for cold start: a mild belief that a plain reminder works
@@ -719,13 +718,13 @@ function chooseArm(post,ctx){
   return{arm:best}}
 const PERSONAS=[
   {name:'The Streaker',desc:'Motivated by not breaking a streak. Plain reminders mostly get ignored.',
-   self:[.55,.45,.55],resp:[[.25,.45,.85,.55,.5],[.2,.4,.8,.5,.45],[.25,.45,.85,.55,.5]]},
+   self:[.55,.45,.55],resp:[[.25,.45,.85,.55],[.2,.4,.8,.5],[.25,.45,.85,.55]]},
   {name:'Night Owl',desc:'Ignores morning pings. Responds well to a plain reminder in the evening.',
-   self:[.3,.5,.6],resp:[[.15,.25,.3,.25,.3],[.3,.5,.45,.45,.4],[.35,.85,.55,.5,.5]]},
+   self:[.3,.5,.6],resp:[[.15,.25,.3,.25],[.3,.5,.45,.45],[.35,.85,.55,.5]]},
   {name:'Self-starter',desc:'Logs late but reliably without help. Every nudge is mild noise.',
-   self:[.5,.5,.5],resp:[[.92,.9,.88,.9,.88],[.92,.9,.88,.9,.88],[.92,.9,.88,.9,.88]]},
+   self:[.5,.5,.5],resp:[[.92,.9,.88,.9],[.92,.9,.88,.9],[.92,.9,.88,.9]]},
   {name:'Data lover',desc:'Responds to seeing their monthly percentage. Streak messages feel like pressure.',
-   self:[.5,.45,.5],resp:[[.25,.5,.3,.85,.45],[.2,.45,.25,.8,.4],[.25,.5,.3,.85,.45]]}
+   self:[.5,.45,.5],resp:[[.25,.5,.3,.85],[.2,.45,.25,.8],[.25,.5,.3,.85]]}
 ];
 const SIM_SLOTS=[[0,'08:00'],[0,'08:00'],[1,'13:00'],[2,'20:00'],[2,'21:00']];
 const engine={post:null,persona:0,results:null,log:[],share:null};
