@@ -14,7 +14,7 @@ Open the live link on a phone, or on a laptop, where the app shows in a phone-si
 
 1. **Home.** The streak is in the centre. Tap **Take now** on the next dose and watch the ring fill.
 2. **Family.** Switch to **Mum's phone**. The dose you just logged is in her notifications. Try her "Notify me" options, then tap **Send a cheer** and go back to Home.
-3. **Medicines → + Add medicines.**
+3. **Medicines.** Under each reminder time you'll see when you usually take that dose and when you'd be nudged. Then tap **+ Add medicines**:
    - Search "diabetes" and pick Gliclazide.
    - Choose the strength on the label and set a reminder time.
    - Add it.
@@ -30,7 +30,7 @@ The streak number sits in the middle of a ring that fills as today's doses are l
 - the last 7 days;
 - adherence this week and this month;
 - the next dose, with Take and Skip;
-- the nudge the engine would send if that dose isn't logged within an hour, and whether family will be alerted ("Why this nudge?" opens the engine);
+- the nudge the engine would send if that dose isn't logged by its nudge time, and whether family will be alerted ("Why this nudge?" opens the engine);
 - a 30-day heatmap with the patient's weakest time of day.
 
 A day counts towards the streak when every dose is taken. One day a week with a single missed dose is covered by a grace day. A long streak reset by one slip is a common point where people give up.
@@ -39,7 +39,7 @@ Adherence is measured per dose: doses taken ÷ doses scheduled over the last 7 o
 
 ### Medicines
 
-This tab shows today's doses with Take and Undo, and the patient's medicines with their 30-day adherence and editable reminder times.
+This tab shows today's doses with Take and Undo, and the patient's medicines with their 30-day adherence and editable reminder times. Under each reminder time it shows when the patient usually takes that dose and when they'd be nudged. If they usually take it 30 minutes or more after the reminder, it offers to move the reminder to match.
 
 **+ Add medicines** opens a 4-step flow:
 
@@ -63,7 +63,7 @@ The patient controls three switches:
 
 - a notification to family for each dose taken;
 - whether medicine names are shown (when off, family sees "the 8 PM dose");
-- an alert to family when a dose still isn't logged an hour after its time, sent at the same moment as the patient's nudge.
+- an alert to family when a dose is late, sent at the same moment as the patient's nudge.
 
 The family member chooses whether to hear about every dose, only late doses, or get a daily summary at 9 PM. They can also send a cheer, which appears on the patient's home screen. The aim is encouragement, not monitoring.
 
@@ -86,15 +86,20 @@ They are general information with a disclaimer, and would need a pharmacist's re
 Take a dose scheduled for 8 PM:
 
 1. **8 PM, the reminder.** It always fires at the time the patient set, as a local notification that works offline.
-2. **9 PM, if the dose still isn't logged: the nudge.** The engine decides whether to follow up and what the message says. This is the adaptive part.
-3. **9 PM, at the same moment: the family alert.** If the patient has turned it on, family members are told the dose hasn't been logged. This is a fixed safety rule, not learned. Its job is to keep family informed, not to persuade.
+2. **The nudge, if the dose still isn't logged.** The app learns when this person usually logs each dose and waits until that window has passed.
+   - **New user:** the nudge comes 1 hour after the dose, at 9 PM.
+   - **After 7 logs:** the app takes the person's last 14 log times for that dose and uses the middle of the range (20th to 80th percentile) as their usual window, for example 8:45–9:15 PM. The nudge comes 30 minutes after the window ends, at 9:45 PM.
+   - **Never more than 2 hours after the dose.** Otherwise a habit of taking it later and later would keep pushing the nudge back.
 
-The timing is deliberately fixed and predictable, so patients and families know what to expect. What adapts is *whether* the patient gets a nudge and *which* one.
+   The engine then decides whether to send a nudge and what it says.
+3. **At the same moment: the family alert.** If the patient has turned it on, family members are told the dose hasn't been logged. This is a fixed safety rule, not learned. Its job is to keep family informed, not to persuade.
+
+Both parts adapt to the person. The **timing** comes from their logging history, and the **engine** chooses whether to nudge and which message. The timing rule is easy to explain to a patient and their family: "30 minutes after you usually take it."
 
 | JITAI component | In this prototype |
 |---|---|
-| Decision point | A dose still not logged 1 hour after its scheduled time |
-| Tailoring variables | Time slot (morning before 11:00, midday, evening from 17:00), current streak, whether yesterday had a miss, nudges already sent today |
+| Decision point | A dose still not logged 30 minutes after the person's usual window for it (1 hour after the dose until there are 7 logs; never more than 2 hours) |
+| Tailoring variables | Usual logging window for each dose, time slot (morning before 11:00, midday, evening from 17:00), current streak, whether yesterday had a miss, nudges already sent today |
 | Intervention options | No nudge · Reminder · Streak · Progress ("you're at 92% this month") · Fresh start (only after a day with a miss) |
 | Decision rule | Thompson sampling: each user has a Beta belief for each time slot × option pair |
 | Proximal outcome | The dose gets logged after the decision |
@@ -146,7 +151,7 @@ What this shows:
   - For one simulated Streaker, streak messages rose from 9% of decisions in days 1–10 to 41% in days 51–60.
   - For one simulated Data lover, progress messages rose from 20% to 55%.
 - **The Self-starter gets the same adherence with 44% fewer nudges.** By days 51–60 the engine chose *No nudge* in 77% of its decisions.
-- **When a plain reminder is already the best option, the engine costs about a point.** That is the case for the Night Owl in the evening, so "always remind" is close to the best possible policy, and the engine pays about a point for exploring. The Night Owl's real problem is mornings, where no message works. That needs the reminder moved to a better time, not a better message (see [What I'd build next](#what-id-build-next)).
+- **When a plain reminder is already the best option, the engine costs about a point.** That is the case for the Night Owl in the evening, so "always remind" is close to the best possible policy, and the engine pays about a point for exploring. The Night Owl's real problem is mornings, where no message works. That needs the reminder moved to a better time, not a better message, which is what the learned timing and the "move reminder" suggestion are for.
 
 **The simulation caught a design flaw.**
 
@@ -166,6 +171,7 @@ The simulator also now uses the app's grace-day rule. Together, these changes to
 
 - The personas are my assumptions, and their preferences don't change over time. So this shows that the mechanism works, not what the effect would be with real patients.
 - The 0.8 score for a nudge the patient didn't need relies on something only a simulation can know. A real system would charge every nudge a small fixed cost instead.
+- The simulator models which nudge works, not clock times. The learned timing runs on the sample history in the app but isn't evaluated in the simulation.
 
 ## Why a web app, and how it maps to Flutter and Firebase
 
@@ -185,7 +191,7 @@ The production version on Acorn's stack would look like this.
 
 **Decisions (Cloud Functions and Cloud Tasks)**
 
-- A task fires 1 hour after each scheduled dose. If the dose isn't logged, it builds the context, samples an option and sends it to the patient through FCM. It also sends the family alert to members who should get it.
+- A task fires at each dose's nudge time, which is recomputed from the person's recent log times whenever they log that dose. If the dose isn't logged, it builds the context, samples an option and sends it to the patient through FCM. It also sends the family alert to members who should get it.
 - Running this on the server keeps one source of truth across devices, and lets the policy change without an app release.
 
 **Logging**
@@ -213,7 +219,7 @@ Firestore security rules work per document, so they can't hide a single field su
 - **No native build or real push notifications.** These need a Firebase project, app signing and device testing, which didn't fit in 4 hours. The installable web app and the two-phone toggle stand in for them.
 - **No real accounts or linking.** The invite code and the "they join" step are simulated. There is no way yet to remove a family member.
 - **Nothing is saved.** State lives in memory and resets on reload. The 30-day history is generated sample data.
-- **A simpler decision point.** It uses the scheduled time, not each person's learned usual time.
+- **Timing ignores the day of the week.** Weekends often run later, and the usual window doesn't account for that yet. The past log times in the sample history are generated.
 - **Unreviewed content.**
   - The condition-to-medicine list (8 conditions, 12 medicines) is hand-written, not taken from a drug database.
   - Neither the list nor the articles have had a pharmacist's review.
@@ -224,9 +230,10 @@ Firestore security rules work per document, so they can't hide a single field su
 ## What I'd build next
 
 1. **Port to Flutter and Firebase** as described above, starting with the engine and its tests.
-2. **Learned habit timing.**
-   - Decide at each person's usual logging time, for example the median of their last 14 logs for that dose.
-   - Suggest moving reminder times that keep failing. This targets the Night Owl's mornings.
+2. **Smarter timing.**
+   - Separate usual windows for weekdays and weekends.
+   - Medicine-specific limits instead of one 2-hour cap, tighter for time-critical medicines.
+   - Test the timing rule in the simulation by giving personas their own log times.
 3. **Realistic rewards.**
    - Charge a fixed cost per nudge instead of using the simulated "would have logged anyway" score.
    - Count muting notifications or uninstalling as a strong negative.

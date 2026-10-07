@@ -122,6 +122,8 @@ input[type=time],.textin{font:500 14px var(--f-mono);padding:7px 10px;border-rad
 .adh{display:flex;flex-direction:column;align-items:flex-end;font-size:14px;white-space:nowrap}
 .adh span:last-child{font-size:11px;color:var(--muted)}
 .times{display:flex;flex-wrap:wrap;gap:8px}
+.timelist{display:flex;flex-direction:column;gap:8px}
+.timerow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 
 /* Family */
 .member{display:grid;grid-template-columns:38px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
@@ -291,7 +293,7 @@ button,label,summary{-webkit-tap-highlight-color:transparent}
     <div class="top"><div><div class="eyebrow">Just-in-time adaptive interventions</div><h1>Nudge engine</h1></div></div>
     <div class="card">
       <h2>How a nudge is chosen</h2>
-      <p class="sub">Your reminder always fires at the time you set. If the dose still isn't logged an hour later, the engine decides the follow-up. It samples a success rate for each eligible nudge from that nudge's Beta posterior (Thompson sampling) and sends the highest draw. "No nudge" competes too. A nudge the user didn't need only scores 0.8, so silence wins when they'd log anyway. At most 2 nudges a day. Family alerts go out at the same moment if you've turned them on. They keep family informed and aren't part of the learning.</p>
+      <p class="sub">Your reminder always fires at the time you set. The app learns when you usually log each dose. If a dose still isn't logged 30 minutes after that usual window (1 hour after the dose for the first 7 logs, never more than 2 hours), the engine decides the follow-up. It samples a success rate for each eligible nudge from that nudge's Beta posterior (Thompson sampling) and sends the highest draw. "No nudge" competes too. A nudge the user didn't need only scores 0.8, so silence wins when they'd log anyway. At most 2 nudges a day. Family alerts go out at the same moment if you've turned them on. They keep family informed and aren't part of the learning.</p>
     </div>
     <div class="card">
       <div class="spread"><h2>Learned success rates</h2><span class="eyebrow" id="postPersona"></span></div>
@@ -432,11 +434,31 @@ function pct(days){let t=0,n=0;for(const day of history.slice(30-days))for(const
 function bucketAdherence(){const t=[0,0,0],n=[0,0,0];for(const day of history)for(const[k,v]of Object.entries(day)){const b=KEY_BUCKET[k];n[b]++;if(v)t[b]++}return t.map((x,i)=>n[i]?x/n[i]:1)}
 function medAdherence(m){let t=0,n=0;for(const day of history)for(const[k,v]of Object.entries(day))if(k.startsWith(m.id+'#')){n++;if(v)t++}return n?t/n:null}
 
-// Today: doses more than an hour old start out logged, as a realistic demo state
+/* ---------- Learned timing ----------
+   Each dose learns when this person usually logs it, and the nudge fires 30 min after that usual window ends.
+   Until there are 7 logs it fires 1 hour after the dose. It never fires more than 2 hours after the dose. */
+const MIN_LOGS=7,DEFAULT_NUDGE=60,BUFFER=30,MAX_NUDGE=120;
+// Sample past log times for the starting schedule: [scheduled time, mean minutes after it, spread]
+const LOG_PROFILE={'m1#0':['08:00',20,8],'m2#0':['08:00',20,8],'m3#0':['13:00',40,20],'m1#1':['20:00',60,18],'m4#0':['21:00',15,8]};
+const logTimes=(()=>{const r=mulberry32(77),L=[];
+  const norm=()=>{let u=0,v=0;while(!u)u=r();while(!v)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+  for(let d=0;d<30;d++){const day={};for(const[k,[t,mu,sd]]of Object.entries(LOG_PROFILE))if(history[d][k])day[k]=toMin(t)+Math.max(0,Math.min(150,Math.round(mu+sd*norm())));L.push(day)}
+  return L})();
+function pctile(a,p){const s=[...a].sort((x,y)=>x-y),i=(s.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return s[lo]+(s[hi]-s[lo])*(i-lo)}
+function timing(key,time){const sched=toMin(time),recent=[];
+  for(let d=29;d>=0&&recent.length<14;d--)if(logTimes[d][key]!=null)recent.push(logTimes[d][key]);
+  if(recent.length<MIN_LOGS)return{learned:false,n:recent.length,at:sched+DEFAULT_NUDGE};
+  const lo=Math.floor(pctile(recent,.2)/5)*5,hi=Math.ceil(pctile(recent,.8)/5)*5;
+  return{learned:true,n:recent.length,lo,hi,at:Math.min(sched+MAX_NUDGE,Math.max(sched+BUFFER,hi+BUFFER)),capped:hi+BUFFER>sched+MAX_NUDGE}}
+const nudgeAt=s=>timing(s.key,s.time).at;
+function fmtRange(a,b){const x=fmt12(hhmm(a)),y=fmt12(hhmm(b));return x.slice(-2)===y.slice(-2)?x.slice(0,-3)+'–'+y:x+'–'+y}
+
+// Today: doses whose usual time has passed start out logged, as a realistic demo state
 const todayLog={};
-for(const s of todaySlots())if(toMin(s.time)<nowMin-60)todayLog[s.key]={at:hhmm(toMin(s.time)+5+Math.floor(Math.random()*25))};
+for(const s of todaySlots()){const t=timing(s.key,s.time),at=Math.round(t.learned?t.lo+Math.random()*(t.hi-t.lo):toMin(s.time)+5+Math.random()*25);
+  if(nowMin>at+15)todayLog[s.key]={at:hhmm(at)}}
 const isTaken=k=>!!(todayLog[k]&&todayLog[k].at);
-const isLate=s=>!todayLog[s.key]&&nowMin-toMin(s.time)>60;
+const isLate=s=>!todayLog[s.key]&&nowMin>nudgeAt(s);
 const allDone=()=>{const S=todaySlots();return S.length>0&&S.every(s=>isTaken(s.key))};
 
 /* ---------- Family circle ---------- */
@@ -445,7 +467,7 @@ const fam={role:'patient',members:[{name:'Mum',rel:'Mother',connected:true}],sha
 for(const[k,v]of Object.entries(todayLog))fam.feed.push({kind:'taken',key:k,at:v.at});
 const circle=()=>fam.members.filter(m=>m.connected).map(m=>m.name);
 function checkLate(){if(!fam.share.late||!circle().length)return;
-  for(const s of todaySlots()){if(nowMin-toMin(s.time)>60&&!todayLog[s.key]&&!fam.alerted[s.key]){fam.alerted[s.key]=true;fam.feed.push({kind:'late',key:s.key,at:hhmm(toMin(s.time)+60)})}}}
+  for(const s of todaySlots()){const due=nudgeAt(s);if(nowMin>due&&!todayLog[s.key]&&!fam.alerted[s.key]){fam.alerted[s.key]=true;fam.feed.push({kind:'late',key:s.key,at:hhmm(due)})}}}
 const famLabel=s=>fam.share.names?`${s.med.name} ${s.med.strength}`:`the ${fmt12(s.time)} dose`;
 function notifText(f){const s=slotByKey(f.key);if(!s)return'';
   return f.kind==='taken'?`Zereth took ${famLabel(s)}.`:`Zereth hasn't logged ${famLabel(s)} yet. It was due at ${fmt12(s.time)}.`}
@@ -493,7 +515,7 @@ function renderHome(){
   const next=S.find(s=>!todayLog[s.key]),nc=$('#nextCard');
   if(!next)nc.innerHTML=`<h2>All done for today</h2><p class="sub">${S.length?'Streak secured. ':''}Your next reminder is tomorrow morning.</p>`;
   else{const m=next.med,late=nowMin-toMin(next.time);
-    const st=late>60?`<span class="chip warn">${lateText(late)}</span>`:late>=0?'<span class="chip">Due now</span>':`<span class="chip good">In ${lateText(-late).replace(' late','')}</span>`;
+    const st=nowMin>nudgeAt(next)?`<span class="chip warn">${lateText(late)}</span>`:late>=0?'<span class="chip">Due now</span>':`<span class="chip good">In ${lateText(-late).replace(' late','')}</span>`;
     const rest=S.filter(s=>!todayLog[s.key]&&s!==next);
     nc.innerHTML=`<div class="spread" style="align-items:flex-start"><div style="min-width:0"><div class="eyebrow">Next dose · <span class="mono">${next.time}</span></div><h2 style="margin-top:6px">${esc(m.name)} ${esc(m.strength)}</h2><p class="sub">${esc(m.note)}</p></div>${st}</div>
       <div class="row"><button class="btn" data-log="${next.key}">Take now</button><button class="btn ghost small" data-skip="${next.key}">Skip</button></div>
@@ -505,8 +527,9 @@ function renderHome(){
   else{const ctx={bucket:next.bucket,streak,missedYesterday:missesOn(29)>0,nudgesToday:0};
     rnd=mulberry32(99);const{arm}=chooseArm(engine.post,ctx);
     chip.textContent=ARMS[arm].label;box.textContent=ARMS[arm].msg(next.med,ctx);
-    const due=toMin(next.time)+60,past=nowMin>=due,c=circle();
-    when.textContent=past?`${next.med.name} wasn't logged by ${fmt12(hhmm(due))}, so:`:`At ${fmt12(hhmm(due))}, if ${next.med.name} still isn't logged:`;
+    const tm=timing(next.key,next.time),due=tm.at,past=nowMin>=due,c=circle();
+    const why=tm.learned?`You usually log ${next.med.name} ${fmtRange(tm.lo,tm.hi)}.`:`Still learning when you usually log ${next.med.name} (${tm.n} of ${MIN_LOGS} logs).`;
+    when.textContent=past?`${next.med.name} wasn't logged by ${fmt12(hhmm(due))}, so:`:`${why} If it isn't logged by ${fmt12(hhmm(due))}:`;
     if(c.length&&fam.share.late)famLine.textContent=`${listNames(c)} ${past?(c.length>1?'were':'was')+' alerted':(c.length>1?'get':'gets')+' an alert'} at the same time.`}
   when.hidden=!when.textContent;famLine.hidden=!famLine.textContent;
 
@@ -531,11 +554,14 @@ function doseRow(s){const t=todayLog[s.key]||{},late=nowMin-toMin(s.time);let ri
   if(t.at)right=`<div class="end"><div class="status" style="color:var(--good)">Taken <span class="mono">${t.at}</span></div><button class="link" data-undo="${s.key}">Undo</button></div>`;
   else if(t.skipped)right=`<div class="end"><div class="status" style="color:var(--muted)">Skipped</div><button class="link" data-undo="${s.key}">Undo</button></div>`;
   else right=`<button class="btn small" data-log="${s.key}">Take</button>`;
-  const flag=!t.at&&!t.skipped&&late>60?`<span class="late"> · ${lateText(late)}</span>`:'';
+  const flag=!t.at&&!t.skipped&&nowMin>nudgeAt(s)?`<span class="late"> · ${lateText(late)}</span>`:'';
   return`<div class="dose"><span class="t mono">${s.time}</span><div style="min-width:0"><div class="n"><span class="pill" style="background:${COLORS[s.med.color]}"></span>${esc(s.med.name)} <span class="mono str">${esc(s.med.strength)}</span></div><div class="meta">${esc(s.med.note)}${flag}</div></div>${right}</div>`}
 function medRow(m){const a=medAdherence(m);
-  const times=m.prn?'<span class="sub">As needed · no reminders</span>':m.times.map((t,i)=>`<input type="time" id="t-${m.id}-${i}" data-edit="${m.id}|${i}" value="${t}" aria-label="${esc(m.name)} reminder ${i+1}">`).join('');
-  return`<div class="medrow"><div class="spread" style="align-items:flex-start"><div style="min-width:0"><div class="n"><span class="pill" style="background:${COLORS[m.color]}"></span>${esc(m.name)} <span class="mono str">${esc(m.strength)}</span></div><div class="meta">${esc(m.cond)} · ${esc(m.note)}</div></div><div class="adh"><span class="mono">${a==null?'New':Math.round(a*100)+'%'}</span><span>${a==null?'added today':'last 30 days'}</span></div></div><div class="times">${times}</div></div>`}
+  const times=m.prn?'<span class="sub">As needed · no reminders</span>':m.times.map((t,i)=>{const tm=timing(`${m.id}#${i}`,t),sched=toMin(t);
+    const info=tm.learned?`Usually ${fmtRange(tm.lo,tm.hi)} · nudge ${fmt12(hhmm(tm.at))}${tm.capped?' (2-hour limit)':''}`:`Learning your usual time (${tm.n} of ${MIN_LOGS} logs) · nudge ${fmt12(hhmm(tm.at))}`;
+    const move=tm.learned&&tm.lo-sched>=30?`<button class="link" data-move="${m.id}|${i}|${hhmm(tm.lo)}">Move reminder to ${fmt12(hhmm(tm.lo))}</button>`:'';
+    return`<div class="timerow"><input type="time" id="t-${m.id}-${i}" data-edit="${m.id}|${i}" value="${t}" aria-label="${esc(m.name)} reminder ${i+1}"><div style="min-width:0"><div class="meta">${info}</div>${move}</div></div>`}).join('');
+  return`<div class="medrow"><div class="spread" style="align-items:flex-start"><div style="min-width:0"><div class="n"><span class="pill" style="background:${COLORS[m.color]}"></span>${esc(m.name)} <span class="mono str">${esc(m.strength)}</span></div><div class="meta">${esc(m.cond)} · ${esc(m.note)}</div></div><div class="adh"><span class="mono">${a==null?'New':Math.round(a*100)+'%'}</span><span>${a==null?'added today':'last 30 days'}</span></div></div><div class="timelist">${times}</div></div>`}
 
 /* ---------- Family ---------- */
 function renderFamily(){
@@ -552,7 +578,7 @@ function renderFamPatient(){
   h+=`<div class="card"><h2>What your family sees</h2><div>
     ${toggleRow('each','Tell them when I take a dose','They get a notification each time you log.')}
     ${toggleRow('names','Show medicine names','When off, they see “the 8 PM dose” instead.')}
-    ${toggleRow('late','Alert them if a dose is over 1 hour late','A gentle heads-up, sent once per dose.')}</div>
+    ${toggleRow('late','Alert them when a dose is late','Sent with your nudge: 30 min after your usual time, or 1 hour after the dose while the app is still learning. Once per dose.')}</div>
     <p class="note">Nothing is shared until you invite someone. You can change this or remove anyone at any time.</p></div>`;
   const last=visibleFeed().slice(-1)[0];
   h+=`<div class="card"><div class="spread"><h2>On Mum's phone</h2><span class="eyebrow">Preview</span></div>
@@ -571,7 +597,7 @@ function renderFamFamily(){
     <div class="mini3"><div><b class="mono">${taken}/${S.length}</b><span>taken today</span></div><div><b class="mono">${streak+(allDone()?1:0)}</b><span>day streak</span></div><div><b class="mono">${Math.round(pct(7)*100)}%</b><span>this week</span></div></div></div>`;
   h+=`<div class="card"><h2>Today</h2><div>${S.map(s=>{const st=slotStatus(s);return`<div class="famrow"><span class="mono">${s.time}</span><span style="min-width:0">${esc(fam.share.names?`${s.med.name} ${s.med.strength}`:`${fmt12(s.time)} dose`)}</span><span class="status" style="color:${st.c}">${st.t}</span></div>`}).join('')}</div></div>`;
   const prefs=[['every','Every dose'],['late','Only if late'],['summary','Daily summary']];
-  const notes={every:"You'll hear each time Zereth logs a dose, plus a heads-up if one is over an hour late.",late:'Quiet unless a dose is more than an hour late.',summary:'One message at 9 PM with how the day went.'};
+  const notes={every:"You'll hear each time Zereth logs a dose, plus a heads-up if one is late.",late:"Quiet unless a dose is late, meaning 30 minutes past Zereth's usual time for it.",summary:'One message at 9 PM with how the day went.'};
   h+=`<div class="card"><h2>Notify me</h2><div class="seg">${prefs.map(([k,l])=>`<button data-pref="${k}" aria-pressed="${fam.pref===k}">${l}</button>`).join('')}</div><p class="note">${notes[fam.pref]}${fam.share.late?'':' Zereth has turned off late alerts.'}</p></div>`;
   const feed=visibleFeed().slice().reverse();
   h+=`<div class="card"><h2>Notifications</h2>${fam.pref==='summary'
@@ -764,6 +790,8 @@ document.addEventListener('click',e=>{const t=e.target;let el;
   if(el=t.closest('[data-log]')){logDose(el.dataset.log);return}
   if(el=t.closest('[data-skip]')){todayLog[el.dataset.skip]={skipped:true};renderAll();return}
   if(el=t.closest('[data-undo]')){undoDose(el.dataset.undo);return}
+  if(el=t.closest('[data-move]')){const[id,i,v]=el.dataset.move.split('|'),m=meds.find(x=>x.id===id);
+    if(m){m.times[+i]=v;renderAll();toast(`${m.name} reminder moved to ${fmt12(v)}. The nudge still follows when you usually take it.`)}return}
   if(el=t.closest('.tab')){go(el.dataset.tab);return}
   if(el=t.closest('[data-go]')){go(el.dataset.go);return}
   if(t.closest('[data-flow]')){openFlow();return}
