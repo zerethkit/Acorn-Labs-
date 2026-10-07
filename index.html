@@ -124,6 +124,16 @@ input[type=time],.textin{font:500 14px var(--f-mono);padding:7px 10px;border-rad
 .times{display:flex;flex-wrap:wrap;gap:8px}
 .timelist{display:flex;flex-direction:column;gap:8px}
 .timerow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tl{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--line)}
+.tl:first-child{border-top:0;padding-top:2px}
+.tlhead{display:flex;justify-content:space-between;align-items:baseline;gap:2px 10px;flex-wrap:wrap;font-size:13px;font-weight:600}
+.tltrack{position:relative;height:22px}
+.tltrack .base{position:absolute;left:0;right:0;top:10px;height:2px;background:var(--line);border-radius:1px}
+.tltrack .win{position:absolute;top:4px;height:14px;background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent);border-radius:7px}
+.tltrack .dotlog{position:absolute;top:8px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--accent);opacity:.55}
+.tltrack .rem{position:absolute;left:0;top:5px;width:12px;height:12px;border-radius:50%;background:var(--ink)}
+.tltrack .ndg{position:absolute;top:0;width:3px;height:22px;margin-left:-1.5px;border-radius:2px;background:var(--warn)}
+.tltrack .cap{position:absolute;top:0;height:22px;border-left:2px dashed var(--muted);opacity:.6}
 
 /* Family */
 .member{display:grid;grid-template-columns:38px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
@@ -296,6 +306,13 @@ button,label,summary{-webkit-tap-highlight-color:transparent}
       <p class="sub">Your reminder always fires at the time you set. The app learns when you usually log each dose. If a dose still isn't logged 30 minutes after that usual window (1 hour after the dose for the first 7 logs, never more than 2 hours), the engine decides the follow-up. It samples a success rate for each eligible nudge from that nudge's Beta posterior (Thompson sampling) and sends the highest draw. "No nudge" competes too. A nudge the user didn't need only scores 0.8, so silence wins when they'd log anyway. At most 2 nudges a day. Family alerts go out at the same moment if you've turned them on. They keep family informed and aren't part of the learning.</p>
     </div>
     <div class="card">
+      <div class="spread"><h2>When nudges fire</h2><span class="eyebrow">Learned per dose</span></div>
+      <p class="sub">Each dot is a past log. The shaded band is the usual window: the middle 60% of the last 14 logs. The nudge fires 30 minutes after it ends.</p>
+      <div id="timingList"></div>
+      <div class="legend"><span><i style="background:var(--ink);border-radius:50%"></i>Reminder</span><span><i style="background:var(--accent);opacity:.55;border-radius:50%"></i>Past logs</span><span><i style="background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)"></i>Usual window</span><span><i style="background:var(--warn)"></i>Nudge</span><span><i style="background:none;border-left:2px dashed var(--muted);border-radius:0;width:2px"></i>2-hour limit</span></div>
+      <p class="note">Until a dose has 7 logs, the nudge fires 1 hour after it. It never fires more than 2 hours after the dose, so a habit of taking it later and later can't push the nudge back indefinitely.</p>
+    </div>
+    <div class="card">
       <div class="spread"><h2>Learned success rates</h2><span class="eyebrow" id="postPersona"></span></div>
       <div class="seg" id="bucketSeg">
         <button data-b="0" aria-pressed="false">Morning</button>
@@ -447,9 +464,9 @@ const logTimes=(()=>{const r=mulberry32(77),L=[];
 function pctile(a,p){const s=[...a].sort((x,y)=>x-y),i=(s.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return s[lo]+(s[hi]-s[lo])*(i-lo)}
 function timing(key,time){const sched=toMin(time),recent=[];
   for(let d=29;d>=0&&recent.length<14;d--)if(logTimes[d][key]!=null)recent.push(logTimes[d][key]);
-  if(recent.length<MIN_LOGS)return{learned:false,n:recent.length,at:sched+DEFAULT_NUDGE};
+  if(recent.length<MIN_LOGS)return{learned:false,n:recent.length,recent,at:sched+DEFAULT_NUDGE};
   const lo=Math.floor(pctile(recent,.2)/5)*5,hi=Math.ceil(pctile(recent,.8)/5)*5;
-  return{learned:true,n:recent.length,lo,hi,at:Math.min(sched+MAX_NUDGE,Math.max(sched+BUFFER,hi+BUFFER)),capped:hi+BUFFER>sched+MAX_NUDGE}}
+  return{learned:true,n:recent.length,recent,lo,hi,at:Math.min(sched+MAX_NUDGE,Math.max(sched+BUFFER,hi+BUFFER)),capped:hi+BUFFER>sched+MAX_NUDGE}}
 const nudgeAt=s=>timing(s.key,s.time).at;
 function fmtRange(a,b){const x=fmt12(hhmm(a)),y=fmt12(hhmm(b));return x.slice(-2)===y.slice(-2)?x.slice(0,-3)+'–'+y:x+'–'+y}
 
@@ -810,7 +827,15 @@ document.addEventListener('change',e=>{const t=e.target;
   if(t.dataset.share){fam.share[t.dataset.share]=t.checked;renderAll();toast(shareMsg(t.dataset.share,t.checked))}});
 
 /* ---------- Boot ---------- */
-function renderAll(){checkLate();renderHome();renderMeds();renderFamily()}
+// "When nudges fire": one timeline per dose, from the reminder to 2.5 hours after it
+function renderTiming(){
+  const S=todaySlots(),span=150,pct=(x,s)=>Math.max(0,Math.min(100,(x-s)/span*100));
+  $('#timingList').innerHTML=S.map(s=>{const t=timing(s.key,s.time),sch=toMin(s.time);
+    const info=t.learned?`Usually ${fmtRange(t.lo,t.hi)} · nudge ${fmt12(hhmm(t.at))}`:`Learning (${t.n} of ${MIN_LOGS} logs) · nudge ${fmt12(hhmm(t.at))}`;
+    const win=t.learned?`<i class="win" style="left:${pct(t.lo,sch)}%;width:${pct(t.hi,sch)-pct(t.lo,sch)}%"></i>`:'';
+    const dots=t.recent.map(x=>`<i class="dotlog" style="left:${pct(x,sch)}%"></i>`).join('');
+    return`<div class="tl"><div class="tlhead"><span><span class="mono">${s.time}</span> ${esc(s.med.name)}</span><span class="meta">${info}</span></div><div class="tltrack" aria-hidden="true"><i class="base"></i>${win}${dots}<i class="cap" style="left:${pct(sch+MAX_NUDGE,sch)}%"></i><i class="rem"></i><i class="ndg" style="left:${pct(t.at,sch)}%"></i></div></div>`}).join('')||'<p class="sub">No scheduled doses.</p>'}
+function renderAll(){checkLate();renderHome();renderMeds();renderFamily();renderTiming()}
 runAll();renderAll();
 let start='home';try{start=localStorage.getItem('dd-tab')||'home'}catch(e){}
 go(screens[start]?start:'home');

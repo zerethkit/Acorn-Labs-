@@ -125,6 +125,7 @@ New users start from a population prior, a mild belief that a plain reminder wor
 
 The Nudges tab shows:
 
+- when each of today's doses would be nudged, on a timeline: the reminder, past log times, the usual window, the nudge time and the 2-hour limit;
 - each option's belief per time slot (the mean and a 90% interval);
 - the chance each option gets picked;
 - a 60-day simulation;
