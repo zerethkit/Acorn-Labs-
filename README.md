@@ -6,6 +6,14 @@ A mobile prototype for the Acorn Labs mobile engineering challenge, **Part B: th
 
 Built during the 4-hour on-site session on 7 Oct 2026.
 
+## Summary
+
+- **The daily screen:** current streak (with one grace day a week), adherence this week and this month, and the upcoming doses with one-tap logging.
+- **When to nudge:** the reminder always fires at the time the patient set. If the dose still isn't logged, the nudge comes 30 minutes after that person's usual logging window, learned from their last 14 logs. New users get 1 hour, and it is never more than 2 hours.
+- **Which nudge:** No nudge, Reminder, Streak or Progress. Each has a success rate per person and time of day. Thompson sampling picks one, favouring what has worked, so effective nudges get sent more, ineffective ones fade out, and silence wins for people who don't need help.
+- **Evidence:** in a 60-day simulation of 4 personas, the engine beat "always remind" by 7–8 points where one message works best. It matched it with 45% fewer notifications for someone who doesn't need nudging, and stayed within a point where a plain reminder is already best. The simulation also caught a design flaw, which I fixed.
+- **Scope:** Part B, plus family sharing with opt-in late alerts and a manual add-medicine flow. It's a single-file web app rather than Flutter, so the time went into the adaptation logic. The sections below map it to Flutter and Firebase and say what is simulated.
+
 ## Try it
 
 Open the live link on a phone, or on a laptop, where the app shows in a phone-sized frame.
